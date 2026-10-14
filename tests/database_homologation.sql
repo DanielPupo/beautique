@@ -1,0 +1,83 @@
+-- Integration tests: all fixtures are rolled back and never published.
+begin;
+select set_config('test.admin_id',gen_random_uuid()::text,true),set_config('test.viewer_id',gen_random_uuid()::text,true),set_config('test.professional_id',gen_random_uuid()::text,true),set_config('test.service_id',gen_random_uuid()::text,true);
+insert into auth.users(id,email,aud,role) values(current_setting('test.admin_id')::uuid,'beautique-test-admin@example.invalid','authenticated','authenticated'),(current_setting('test.viewer_id')::uuid,'beautique-test-viewer@example.invalid','authenticated','authenticated');
+insert into public.profiles(id,role) values(current_setting('test.admin_id')::uuid,'admin'),(current_setting('test.viewer_id')::uuid,'viewer');
+select set_config('request.jwt.claims',json_build_object('sub',current_setting('test.admin_id'),'role','authenticated')::text,true);
+set local role authenticated;
+insert into public.professionals(id,name) values(current_setting('test.professional_id')::uuid,'TESTE TRANSACIONAL — profissional fictício');
+insert into public.services(id,name,slug,category_slug,duration_minutes) values(current_setting('test.service_id')::uuid,'TESTE TRANSACIONAL — procedimento fictício','teste-transacional','estetica-facial',30);
+insert into public.professional_services values(current_setting('test.professional_id')::uuid,current_setting('test.service_id')::uuid);
+insert into public.professional_availability(professional_id,weekday,starts_at,ends_at) select current_setting('test.professional_id')::uuid,n,'08:00','18:00' from generate_series(0,6) n;
+select set_config('test.slot',(((now() at time zone 'America/Sao_Paulo')::date+2)+time '10:00') at time zone 'America/Sao_Paulo'||'',true);
+-- Create, read, edit and audit actual admin records.
+do $$ declare p uuid; passed boolean; begin
+ if not private.is_admin() then raise exception 'FAIL admin authorization'; end if;
+ update public.services set price_cents=12345 where id=current_setting('test.service_id')::uuid;
+ if (select price_cents from public.services where id=current_setting('test.service_id')::uuid)<>12345 then raise exception 'FAIL CRUD persistence'; end if;
+ if not exists(select 1 from public.audit_logs where record_id=current_setting('test.service_id') and operation='UPDATE') then raise exception 'FAIL audit'; end if;
+ p=public.reserve_appointment(current_setting('test.service_id')::uuid,current_setting('test.professional_id')::uuid,current_setting('test.slot')::timestamptz,'TESTE cliente fictícia','11999999999');
+ perform set_config('test.appointment_id',(select id::text from public.appointments where protocol=p),true);
+ passed=false;
+ begin perform public.reserve_appointment(current_setting('test.service_id')::uuid,current_setting('test.professional_id')::uuid,current_setting('test.slot')::timestamptz,'TESTE conflito','11999999999'); exception when exclusion_violation then passed=true; end;
+ if not passed then raise exception 'FAIL conflict prevention'; end if;
+ passed=false;
+ begin perform public.reserve_appointment(current_setting('test.service_id')::uuid,current_setting('test.professional_id')::uuid,current_setting('test.slot')::timestamptz-interval '4 hours','TESTE jornada','11999999999'); exception when others then if sqlerrm='Outside professional schedule' then passed=true; else raise; end if; end;
+ if not passed then raise exception 'FAIL working hours'; end if;
+ passed=false;
+ begin perform public.reserve_appointment(current_setting('test.service_id')::uuid,current_setting('test.professional_id')::uuid,now()-interval '1 hour','TESTE passado','11999999999'); exception when others then if sqlerrm='Appointment must be in future' then passed=true; else raise; end if; end;
+ if not passed then raise exception 'FAIL past date'; end if;
+ passed=false;
+ begin perform public.reserve_appointment(current_setting('test.service_id')::uuid,gen_random_uuid(),current_setting('test.slot')::timestamptz,'TESTE elegibilidade','11999999999'); exception when others then if sqlerrm='Professional not eligible' then passed=true; else raise; end if; end;
+ if not passed then raise exception 'FAIL eligibility'; end if;
+ insert into public.availability_exceptions(professional_id,starts_at,ends_at,reason) values(current_setting('test.professional_id')::uuid,current_setting('test.slot')::timestamptz+interval '3 hours',current_setting('test.slot')::timestamptz+interval '4 hours','TESTE bloqueio');
+ passed=false;
+ begin perform public.reserve_appointment(current_setting('test.service_id')::uuid,current_setting('test.professional_id')::uuid,current_setting('test.slot')::timestamptz+interval '3 hours','TESTE bloqueio','11999999999'); exception when others then if sqlerrm='Professional unavailable' then passed=true; else raise; end if; end;
+ if not passed then raise exception 'FAIL unavailable interval'; end if;
+ passed=false;
+ begin insert into public.appointments(service_id,professional_id,starts_at,ends_at,customer_name,phone) values(current_setting('test.service_id')::uuid,current_setting('test.professional_id')::uuid,current_setting('test.slot')::timestamptz+interval '2 hours',current_setting('test.slot')::timestamptz+interval '4 hours','TESTE duração','11999999999'); exception when check_violation then passed=true; end;
+ if not passed then raise exception 'FAIL duration tampering'; end if;
+ perform public.reschedule_appointment(current_setting('test.appointment_id')::uuid,current_setting('test.slot')::timestamptz+interval '1 hour');
+ if (select starts_at from public.appointments where id=current_setting('test.appointment_id')::uuid)<>current_setting('test.slot')::timestamptz+interval '1 hour' then raise exception 'FAIL reschedule'; end if;
+ update public.appointments set status='confirmed' where id=current_setting('test.appointment_id')::uuid;
+ if not exists(select 1 from public.appointment_status_history where appointment_id=current_setting('test.appointment_id')::uuid and new_status='confirmed') then raise exception 'FAIL status history'; end if;
+ update public.appointments set status='cancelled' where id=current_setting('test.appointment_id')::uuid;
+ perform public.reserve_appointment(current_setting('test.service_id')::uuid,current_setting('test.professional_id')::uuid,current_setting('test.slot')::timestamptz+interval '1 hour','TESTE reutilização','11999999999');
+ passed=false;
+ begin update public.appointments set status='confirmed' where id=current_setting('test.appointment_id')::uuid; exception when exclusion_violation then passed=true; end;
+ if not passed then raise exception 'FAIL reactivation conflict'; end if;
+ update public.services set active=false where id=current_setting('test.service_id')::uuid;
+ if not exists(select 1 from public.services where id=current_setting('test.service_id')::uuid and not active) then raise exception 'FAIL admin inactive access'; end if;
+ end $$;
+-- Viewer cannot read client PII, promote their profile, or use reservation RPC.
+reset role;
+select set_config('request.jwt.claims',json_build_object('sub',current_setting('test.viewer_id'),'role','authenticated')::text,true);
+set local role authenticated;
+do $$ declare passed boolean=false;begin
+ if private.is_admin() then raise exception 'FAIL viewer role'; end if;
+ if exists(select 1 from public.appointments) or exists(select 1 from public.audit_logs) then raise exception 'FAIL customer privacy'; end if;
+ if exists(select 1 from public.services where id=current_setting('test.service_id')::uuid) then raise exception 'FAIL inactive visibility'; end if;
+ update public.profiles set role='admin' where id=current_setting('test.viewer_id')::uuid;
+ if private.is_admin() then raise exception 'FAIL privilege escalation'; end if;
+ begin perform public.reserve_appointment(current_setting('test.service_id')::uuid,current_setting('test.professional_id')::uuid,current_setting('test.slot')::timestamptz,'TESTE não autorizado','11999999999'); exception when others then if sqlerrm='Administrator required' then passed=true; else raise; end if; end;
+ if not passed then raise exception 'FAIL RPC authorization'; end if;
+ end $$;
+-- Anonymous cannot reach personal records or invoke administrative actions.
+reset role;
+select set_config('request.jwt.claims','{"role":"anon"}',true);
+set local role anon;
+do $$ declare passed boolean=false;begin
+ if (select count(*) from public.service_categories)<>5 then raise exception 'FAIL public categories'; end if;
+ if exists(select 1 from public.services where id=current_setting('test.service_id')::uuid) then raise exception 'FAIL anonymous inactive visibility'; end if;
+ begin perform count(*) from public.appointments; exception when insufficient_privilege then passed=true; end;
+ if not passed then raise exception 'FAIL anonymous PII grant'; end if;
+ passed=false;
+ begin insert into public.services(slug,name) values('unauthorized','TESTE anônimo'); exception when insufficient_privilege then passed=true; end;
+ if not passed then raise exception 'FAIL anonymous write'; end if;
+ passed=false;
+ begin perform public.reserve_appointment(current_setting('test.service_id')::uuid,current_setting('test.professional_id')::uuid,current_setting('test.slot')::timestamptz,'TESTE anônimo','11999999999'); exception when insufficient_privilege then passed=true; end;
+ if not passed then raise exception 'FAIL anonymous RPC'; end if;
+ end $$;
+reset role;
+select 'PASS: admin CRUD/audit; reserve/conflict/schedule/past/eligibility/block/duration; reschedule/history/cancellation/reactivation; viewer privacy/escalation; anon reads/writes/RPC.' as result;
+rollback;

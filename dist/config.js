@@ -1,0 +1,1 @@
+window.BEAUTIQUE_CONFIG = {"supabaseUrl":"https://cqknmhoktnlbmbcliwbu.supabase.co","supabaseAnonKey":"sb_publishable_-Hq1YO-ZZQID61dhVFgIXA_2keDtqU0","whatsappConfirmed":false,"bookingMode":"request"};

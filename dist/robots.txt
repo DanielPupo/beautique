@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+Disallow: /admin/
+Sitemap: https://beautique-itapeva.pupodaniel411.chatgpt.site/sitemap.xml
