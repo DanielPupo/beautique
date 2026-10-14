@@ -15,7 +15,13 @@
 - PASS: sintaxe do script prepare-vercel.mjs.
 - PASS: preparação estática sem credenciais, preservando modo de consulta.
 - PASS: verificação das 16 páginas após preparação.
-- Vercel/Supabase: publicação e homologação externas aguardam conexão; não executadas.
+- PASS: implantação Vercel criada no projeto beautique-itapeva; URL pública https://beautique-itapeva.vercel.app.
+- PASS: resposta HTTP 200 na URL pública; cabeçalhos CSP e X-Robots-Tag noindex, nofollow presentes.
+- PASS: configuração pública Supabase carregada; REST de categorias retornou HTTP 200 e cinco categorias.
+- PASS: seis imagens locais da página inicial carregaram no navegador; bookingMode permanece request e WhatsApp desativado.
+- PASS: canonical e Open Graph apontam para a URL Vercel; formulário público prepara mensagem de teste sem persistir ou enviar dados; /admin apresenta somente o login.
+- A URL Vercel está pública e não é protegida por senha; noindex não impede acesso. O projeto foi enviado como pasta e não possui Git conectado para deploys automáticos.
+- Domínio próprio, cadastro da conta administrativa e publicação operacional ainda aguardam configuração/aprovação.
 
 ## Supabase conectado — verificações efetivamente executadas
 

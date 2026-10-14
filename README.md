@@ -1,6 +1,6 @@
 # Beautique Estética & Hair
 
-Website multipágina em HTML, CSS e JavaScript, com integração Supabase Auth/REST opcional. A implantação Sites é privada. A escolha buildless elimina dependências de framework no ambiente atual; não é um projeto Next.js. Serviços, valores e horários não confirmados permanecem para consulta.
+Website multipágina em HTML, CSS e JavaScript, com integração Supabase Auth/REST opcional. A primeira versão está publicada em uma URL pública da Vercel, marcada `noindex` e sem reservas online. A escolha buildless elimina dependências de framework no ambiente atual; não é um projeto Next.js. Serviços, valores e horários não confirmados permanecem para consulta.
 
 ## Instalação e implantação
 
@@ -60,7 +60,7 @@ Esta entrega é uma base funcional para apresentação privada e evolução. Ain
 
 ## Preparação Vercel — 14/10/2026
 
-Configuração de deploy, headers de segurança e geração de configuração pública preparados. A versão está marcada noindex até homologação. Isso não restringe acesso: antes de publicar, habilitar e verificar Deployment Protection também no domínio de produção. Não publicar com dados pessoais nem mudar a audiência sem atender ao pedido de privacidade. Supabase configurado no projeto dedicado existente; Vercel retornou 403 no espaço solicitado e publicação aguarda conexão com acesso a esse espaço.
+Publicado em https://beautique-itapeva.vercel.app no projeto `beautique-itapeva`, equipe Daniel Pupo's projects, em 14/10/2026. A implantação foi enviada a partir da pasta local; não há repositório Git conectado para deploys automáticos. A URL é pública, mas permanece `noindex, nofollow`; isso não restringe o acesso. O painel `/admin/` exige autenticação e a autorização depende das políticas RLS do Supabase. O WhatsApp não foi ativado, e o formulário continua apenas preparando uma solicitação, sem enviar nem reservar horário. O Supabase configurado é o projeto dedicado existente. Antes de divulgar para operação comercial, aprovar os textos legais, cadastrar a conta administrativa real, validar os dados comerciais e confirmar o fluxo de atendimento.
 
 ## Homologação do banco executada
 
